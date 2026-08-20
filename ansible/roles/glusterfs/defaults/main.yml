@@ -1,0 +1,8 @@
+---
+glusterfs_brick_path: /data/glusterfs/brick1/brick
+glusterfs_volume_name: pga-vol
+
+# Ne finaliser le peering + la création du volume que lorsque les 3 nœuds
+# sont réellement déployés et joignables. Se déclenche explicitement avec :
+#   ansible-playbook site.yml -e "glusterfs_finalize=true"
+glusterfs_finalize: false

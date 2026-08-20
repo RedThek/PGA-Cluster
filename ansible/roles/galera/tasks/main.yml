@@ -1,0 +1,149 @@
+---
+- name: Installer les paquets MariaDB / Galera
+  apt:
+    name:
+      - mariadb-server
+      - galera-4
+      - mariadb-backup
+      - rsync
+      - python3-pymysql
+    state: present
+    update_cache: yes
+
+- name: Déployer la configuration Galera (60-galera.cnf)
+  template:
+    src: 60-galera.cnf.j2
+    dest: /etc/mysql/mariadb.conf.d/60-galera.cnf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart mariadb
+
+# ---------------------------------------------------------------------------
+# Bootstrap initial : uniquement sur galera_bootstrap_node, et uniquement
+# quand galera_first_run=true est passé explicitement en ligne de commande.
+# ---------------------------------------------------------------------------
+
+- name: Arrêter MariaDB avant le bootstrap initial
+  systemd:
+    name: mariadb
+    state: stopped
+  when:
+    - inventory_hostname == galera_bootstrap_node
+    - galera_first_run | bool
+
+- name: Forcer safe_to_bootstrap dans grastate.dat si nécessaire
+  replace:
+    path: /var/lib/mysql/grastate.dat
+    regexp: 'safe_to_bootstrap: 0'
+    replace: 'safe_to_bootstrap: 1'
+  when:
+    - inventory_hostname == galera_bootstrap_node
+    - galera_first_run | bool
+  ignore_errors: yes
+
+- name: Bootstrap du cluster Galera (galera_new_cluster)
+  command: galera_new_cluster
+  when:
+    - inventory_hostname == galera_bootstrap_node
+    - galera_first_run | bool
+
+# ---------------------------------------------------------------------------
+# Démarrage normal : tous les nœuds sauf celui en train de bootstrapper
+# ---------------------------------------------------------------------------
+
+- name: Démarrer MariaDB normalement (rejoint le cluster existant via wsrep_cluster_address)
+  systemd:
+    name: mariadb
+    state: started
+    enabled: yes
+  when: not (inventory_hostname == galera_bootstrap_node and galera_first_run | bool)
+
+- name: S'assurer que MariaDB est activé au démarrage (tous les nœuds)
+  systemd:
+    name: mariadb
+    enabled: yes
+
+# ---------------------------------------------------------------------------
+# Comptes MySQL nécessaires au SST et au health-check HAProxy.
+# Authentification root via socket Unix (comportement par défaut de
+# mariadb-server sous Debian pour root@localhost) — aucun mot de passe requis.
+# ---------------------------------------------------------------------------
+
+- name: Créer l'utilisateur SST ({{ sst_user }})
+  community.mysql.mysql_user:
+    name: "{{ sst_user }}"
+    password: "{{ vault_sst_password }}"
+    priv: "*.*:RELOAD,LOCK TABLES,PROCESS,REPLICATION CLIENT"
+    host: localhost
+    login_unix_socket: /run/mysqld/mysqld.sock
+    state: present
+
+- name: Créer l'utilisateur clustercheck ({{ clustercheck_user }})
+  community.mysql.mysql_user:
+    name: "{{ clustercheck_user }}"
+    password: "{{ vault_clustercheck_password }}"
+    priv: "*.*:PROCESS,REPLICATION CLIENT"
+    host: localhost
+    login_unix_socket: /run/mysqld/mysqld.sock
+    state: present
+
+# ---------------------------------------------------------------------------
+# clustercheck via xinetd (port 9200), consommé par HAProxy
+# ---------------------------------------------------------------------------
+
+- name: Installer xinetd
+  apt:
+    name: xinetd
+    state: present
+
+- name: Déployer le script clustercheck
+  get_url:
+    url: https://raw.githubusercontent.com/olafz/percona-clustercheck/master/clustercheck
+    dest: /usr/bin/clustercheck
+    mode: '0755'
+    force: no
+
+- name: Déployer /etc/sysconfig/clustercheck (identifiants explicites, hors valeurs par défaut du script)
+  template:
+    src: sysconfig-clustercheck.j2
+    dest: /etc/sysconfig/clustercheck
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Déployer la définition du service xinetd mysqlchk
+  template:
+    src: mysqlchk.j2
+    dest: /etc/xinetd.d/mysqlchk
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart xinetd
+
+- name: Déclarer mysqlchk dans /etc/services
+  lineinfile:
+    path: /etc/services
+    regexp: '^mysqlchk\s'
+    line: "mysqlchk        9200/tcp"
+
+- name: Activer et démarrer xinetd
+  systemd:
+    name: xinetd
+    enabled: yes
+    state: started
+
+- name: Vérifier que clustercheck répond correctement (200 attendu)
+  uri:
+    url: "http://127.0.0.1:9200/"
+    status_code: 200
+  register: clustercheck_probe
+  retries: 5
+  delay: 3
+  until: clustercheck_probe.status == 200
+  ignore_errors: yes
+
+- name: Avertir si clustercheck ne répond pas 200
+  debug:
+    msg: "ATTENTION : clustercheck ne renvoie pas 200 sur {{ inventory_hostname }} — vérifier l'état wsrep_local_state et les identifiants MySQL."
+  when: clustercheck_probe.status is not defined or clustercheck_probe.status != 200

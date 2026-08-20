@@ -1,0 +1,9 @@
+---
+# Port sur lequel HAProxy écoute pour le trafic Galera (VIP)
+haproxy_bind_port: 3306
+
+# Port utilisé par HAProxy pour interroger clustercheck (via xinetd) sur chaque nœud
+haproxy_health_check_port: 9200
+
+# Port du dashboard de stats HAProxy (accessible sur l'IP propre de chaque nœud)
+haproxy_stats_port: 8404

@@ -1,0 +1,16 @@
+# Fichier généré par Ansible (rôle: galera) — ne pas éditer à la main
+[mysqld]
+binlog_format=ROW
+default_storage_engine=InnoDB
+innodb_autoinc_lock_mode=2
+bind-address=0.0.0.0
+
+# Galera Provider
+wsrep_on=ON
+wsrep_provider=/usr/lib/galera/libgalera_smm.so
+wsrep_cluster_name="{{ galera_cluster_name }}"
+wsrep_cluster_address="gcomm://{% for host in groups['cluster'] %}{{ hostvars[host].ansible_host }}{% if not loop.last %},{% endif %}{% endfor %}"
+wsrep_node_address="{{ ansible_host }}"
+wsrep_node_name="{{ inventory_hostname }}"
+wsrep_sst_method=mariabackup
+wsrep_sst_auth={{ sst_user }}:{{ vault_sst_password }}

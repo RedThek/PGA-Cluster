@@ -1,0 +1,23 @@
+- name: Mettre à jour le système
+  apt:
+    update_cache: yes
+    upgrade: dist
+
+- name: Installer les paquets de base
+  apt:
+    name: [curl, gnupg2, rsync, vim, chrony]
+    state: present
+
+- name: Démarrer chrony
+  systemd:
+    name: chrony
+    enabled: yes
+    state: started
+
+- name: Renseigner /etc/hosts
+  blockinfile:
+    path: /etc/hosts
+    block: |
+      192.168.50.11 node1
+      192.168.50.12 node2
+      192.168.50.13 node3

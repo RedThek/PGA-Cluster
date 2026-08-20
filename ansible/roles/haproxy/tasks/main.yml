@@ -1,0 +1,22 @@
+---
+- name: Installer HAProxy
+  apt:
+    name: haproxy
+    state: present
+    update_cache: yes
+
+- name: Déployer la configuration HAProxy (avec validation avant application)
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: '0644'
+    validate: 'haproxy -c -f %s'
+  notify: restart haproxy
+
+- name: Activer et démarrer HAProxy
+  systemd:
+    name: haproxy
+    enabled: yes
+    state: started

@@ -1,0 +1,13 @@
+---
+cluster_vip: 192.168.50.10
+cluster_interface: ens33
+galera_cluster_name: pga_cluster
+galera_nodes:
+  - 192.168.50.11
+  - 192.168.50.12
+  - 192.168.50.13
+sst_user: sstuser
+clustercheck_user: clustercheckuser
+
+glusterfs_volume_name: pga-vol
+glusterfs_brick_path: /data/glusterfs/brick1/brick

@@ -1,0 +1,14 @@
+vrrp_instance VI_1 {
+    state {{ 'MASTER' if inventory_hostname == 'node1' else 'BACKUP' }}
+    interface {{ cluster_interface | default('ens37') }}
+    virtual_router_id 51
+    priority {{ 150 if inventory_hostname == 'node1' else (140 if inventory_hostname == 'node2' else 130) }}
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass {{ vault_keepalived_auth_pass }}
+    }
+    virtual_ipaddress {
+        {{ cluster_vip }}/24
+    }
+}

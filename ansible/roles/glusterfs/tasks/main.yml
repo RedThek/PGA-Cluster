@@ -1,0 +1,87 @@
+---
+- name: Installer GlusterFS
+  apt:
+    name: glusterfs-server
+    state: present
+    update_cache: yes
+
+- name: Activer et démarrer glusterd
+  systemd:
+    name: glusterd
+    enabled: yes
+    state: started
+
+- name: Créer le répertoire du brick
+  file:
+    path: "{{ glusterfs_brick_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Laisser glusterd finir son initialisation
+  wait_for:
+    path: /var/run/glusterd.socket
+    timeout: 30
+  ignore_errors: yes
+
+# ---------------------------------------------------------------------------
+# Les tâches ci-dessous établissent le peering et créent le volume répliqué.
+# Elles ne doivent tourner qu'une fois que les 3 nœuds sont dans l'inventaire
+# ET joignables (donc PAS lors du déploiement solo de node1). Elles sont
+# gardées par la variable glusterfs_finalize (false par défaut) et ne
+# s'exécutent que depuis node1, pour éviter tout peer probe croisé redondant.
+# ---------------------------------------------------------------------------
+
+- name: "Probe des pairs Gluster (depuis node1, vers les autres nœuds)"
+  command: "gluster peer probe {{ hostvars[item].ansible_host }}"
+  loop: "{{ groups['cluster'] }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - glusterfs_finalize | bool
+    - inventory_hostname == 'node1'
+    - item != inventory_hostname
+  register: gluster_peer_result
+  changed_when: "'already in peer list' not in gluster_peer_result.stdout"
+  failed_when:
+    - gluster_peer_result.rc != 0
+    - "'already in peer list' not in gluster_peer_result.stdout"
+
+- name: Attendre que tous les pairs soient bien connectés
+  command: gluster peer status
+  when:
+    - glusterfs_finalize | bool
+    - inventory_hostname == 'node1'
+  register: gluster_peer_status
+  changed_when: false
+  retries: 5
+  delay: 3
+  until: "'Peer in Cluster (Connected)' in gluster_peer_status.stdout or (groups['cluster'] | length) == 1"
+
+- name: Vérifier si le volume existe déjà
+  command: "gluster volume info {{ glusterfs_volume_name }}"
+  when:
+    - glusterfs_finalize | bool
+    - inventory_hostname == 'node1'
+  register: gluster_volume_check
+  changed_when: false
+  failed_when: false
+
+- name: "Créer le volume répliqué (une seule fois, depuis node1)"
+  command: >
+    gluster volume create {{ glusterfs_volume_name }} replica {{ groups['cluster'] | length }}
+    {% for host in groups['cluster'] %}{{ hostvars[host].ansible_host }}:{{ glusterfs_brick_path }}{% if not loop.last %} {% endif %}{% endfor %}
+    force
+  when:
+    - glusterfs_finalize | bool
+    - inventory_hostname == 'node1'
+    - gluster_volume_check.rc != 0
+  register: gluster_create_result
+
+- name: Démarrer le volume Gluster
+  command: "gluster volume start {{ glusterfs_volume_name }}"
+  when:
+    - glusterfs_finalize | bool
+    - inventory_hostname == 'node1'
+    - gluster_create_result is changed

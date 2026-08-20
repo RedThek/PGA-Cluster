@@ -1,0 +1,7 @@
+# NE PAS committer ce fichier tel quel.
+# Utiliser :  ansible-vault create group_vars/vault.yml
+# puis coller ce contenu (avec de vraies valeurs) dans l'éditeur qui s'ouvre.
+
+vault_sst_password: changeme
+vault_clustercheck_password: clustercheckpassword!
+vault_keepalived_auth_pass: pga2026

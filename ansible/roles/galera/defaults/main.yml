@@ -1,0 +1,10 @@
+---
+# Nœud désigné pour le tout premier bootstrap du cluster
+galera_bootstrap_node: node1
+
+# À ne passer à true qu'explicitement, en ligne de commande, la toute
+# première fois que le cluster est créé :
+#   ansible-playbook site.yml --limit node1 -e "galera_first_run=true"
+# Ne JAMAIS le laisser à true en exécution normale, sous peine de
+# re-bootstrap intempestif (split-brain) sur un cluster déjà en place.
+galera_first_run: false
