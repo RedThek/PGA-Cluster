@@ -1,3 +1,4 @@
+#
 # * Galera-related settings
 #
 # See the examples of server wsrep.cnf files in /usr/share/mariadb
@@ -7,7 +8,7 @@
 binlog_format            = row
 default_storage_engine   = InnoDB
 innodb_autoinc_lock_mode = 2
-# bind-address             = 0.0.0.0
+# bind-address           = 0.0.0.0
 
 [galera]
 # Mandatory settings
