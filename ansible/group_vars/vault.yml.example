@@ -4,4 +4,4 @@
 
 vault_sst_password: changeme
 vault_clustercheck_password: clustercheckpassword!
-vault_keepalived_auth_pass: pga2026
+vault_keepalived_auth_pass: pganodes
